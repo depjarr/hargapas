@@ -3,7 +3,20 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const DAILY_LIMIT = 30 // dihitung bersama pemakaian Konsultan AI
-const MODEL = Deno.env.get('GROQ_VISION_MODEL') ?? 'meta-llama/llama-4-scout-17b-16e-instruct'
+// llama-4-scout sudah dihapus dari Groq; qwen3.8-27b bisa membaca gambar
+const MODEL = Deno.env.get('GROQ_VISION_MODEL') ?? 'qwen/qwen3.8-27b'
+/** Jelaskan error dari Groq dalam bahasa sederhana (ditampilkan ke pengguna, tanpa membocorkan kunci). */
+function groqReason(status: number, body: string) {
+  let msg = ''
+  try { msg = JSON.parse(body)?.error?.message ?? '' } catch { msg = body }
+  msg = String(msg).replace(/gsk_[A-Za-z0-9]+/g, 'gsk_***').slice(0, 160)
+  if (status === 401) return 'Kunci GROQ_API_KEY di Supabase tidak valid. Periksa lagi di Edge Functions > Secrets (tanpa spasi/enter).'
+  if (status === 404 || /model.*(not exist|not found|decommission)/i.test(msg)) return `Model AI tidak tersedia di Groq (${msg}).`
+  if (status === 413 || /too large|tokens per minute|TPM/i.test(msg)) return 'Data yang dikirim ke AI terlalu besar untuk batas akun Groq. Coba lagi sebentar.'
+  if (status === 429) return 'Konsultan AI sedang ramai (batas Groq tercapai). Coba lagi sebentar.'
+  return `Groq menolak permintaan (kode ${status}${msg ? ': ' + msg : ''}).`
+}
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -48,8 +61,9 @@ Deno.serve(async (req) => {
       }),
     })
     if (!res.ok) {
-      console.error('Groq vision error', res.status, await res.text())
-      return json({ error: 'Pembacaan gambar gagal. Coba lagi, atau isi manual.' }, 502)
+      const t = await res.text()
+      console.error('Groq vision error', res.status, t)
+      return json({ error: 'Pembacaan gambar gagal: ' + groqReason(res.status, t) + ' Anda tetap bisa mengisi manual.' }, 502)
     }
     const text = (await res.json()).choices?.[0]?.message?.content ?? ''
     let parsed: any = null

@@ -86,7 +86,8 @@ export default function ProductDetail() {
           <div className="pd-actions">
             <Link className="btn block" to={`/kalkulator/${p.id}`}><Icon n="edit" />Ubah produk</Link>
             <Link className="btn block soft" to={`/rekomendasi?p=${p.id}`}><Icon n="bulb" />Rekomendasi harga</Link>
-            <ConfirmButton className="btn block danger" onConfirm={remove}>Hapus produk</ConfirmButton>
+            <ConfirmButton className="btn block danger" onConfirm={remove}
+              confirm={{ title: `Hapus ${p.name}?`, message: 'Produk, rincian biaya, foto, dan riwayat harganya akan dihapus permanen.', confirmLabel: 'Hapus' }}>Hapus produk</ConfirmButton>
           </div>
         </div>
       </section>

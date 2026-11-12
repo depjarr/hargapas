@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { recovery } from '../lib/recovery'
 import RecoveryCodeCard from './RecoveryCodeCard'
 import Icon from './Icon'
+import { useConfirm } from '../lib/confirm'
 
 /** Pengaturan: lihat status & buat kode pemulihan baru (untuk akun lama, atau bila kodenya hilang). */
 export default function RecoveryPanel() {
@@ -10,6 +11,7 @@ export default function RecoveryPanel() {
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const ask = useConfirm()
 
   useEffect(() => {
     recovery<{ created_at: string | null }>({ action: 'status' })
@@ -18,7 +20,7 @@ export default function RecoveryPanel() {
   }, [])
 
   async function make() {
-    if (since && !confirm('Buat kode baru? Kode lama langsung tidak berlaku.')) return
+    if (since && !(await ask({ title: 'Buat kode baru?', message: 'Kode pemulihan yang lama langsung tidak berlaku lagi.', confirmLabel: 'Buat kode baru' }))) return
     setErr(''); setBusy(true)
     try {
       const r = await recovery<{ code: string }>({ action: 'issue' })

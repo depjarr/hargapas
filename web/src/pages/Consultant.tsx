@@ -7,6 +7,7 @@ import { fnErrorMessage } from '../lib/fn'
 import type { ChatMsg } from '../lib/types'
 import Icon from '../components/Icon'
 import Markdown from '../components/Markdown'
+import { useConfirm } from '../lib/confirm'
 
 const SUGGEST = [
   'Apakah harga produkku terlalu mahal?',
@@ -24,6 +25,7 @@ const day = (s: string) => {
 export default function Consultant() {
   const d = useData()
   const toast = useToast()
+  const confirmDlg = useConfirm()
   const [sel, setSel] = useState('')
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
   const [text, setText] = useState('')
@@ -70,7 +72,8 @@ export default function Consultant() {
   }
 
   async function removeChat(id: string) {
-    if (!confirm('Hapus percakapan ini? Semua pesannya ikut terhapus.')) return
+    const t = d.chats.find(c => c.id === id)?.title
+    if (!(await confirmDlg({ title: 'Hapus percakapan?', message: `"${t ?? 'Percakapan ini'}" dan semua pesannya akan dihapus permanen.`, confirmLabel: 'Hapus', danger: true }))) return
     const r = await supabase.from('chats').delete().eq('id', id)
     if (r.error) return toast(r.error.message, true)
     if (id === sel) { setSel(''); setMsgs([]) }

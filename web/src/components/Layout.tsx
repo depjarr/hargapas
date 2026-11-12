@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { DataProvider, useData } from '../lib/data'
 import { ToastProvider } from '../lib/toast'
+import { ConfirmProvider } from '../lib/confirm'
 import { dd } from '../lib/format'
 import Icon from './Icon'
 
@@ -116,9 +117,11 @@ function Shell() {
 export default function Layout() {
   return (
     <ToastProvider>
-      <DataProvider>
-        <Shell />
-      </DataProvider>
+      <ConfirmProvider>
+        <DataProvider>
+          <Shell />
+        </DataProvider>
+      </ConfirmProvider>
     </ToastProvider>
   )
 }

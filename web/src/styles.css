@@ -757,3 +757,31 @@ tr.tot th { color: var(--label); font-weight: 700; border-top: 1px solid var(--s
 .rk-bar i { display: block; height: 100%; border-radius: 4px; background: color-mix(in srgb, var(--brand-2) 45%, var(--sky)); opacity: .75; }
 .rank li.top .rk-bar i { background: linear-gradient(90deg, var(--brand-2), var(--sky)); opacity: 1; }
 .rk-bar i.n { background: var(--red); opacity: 1; }
+
+/* ---------- Dialog konfirmasi gaya iOS ---------- */
+.dlg-scrim {
+  position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px;
+  background: rgba(0,0,0,.32); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fade .18s ease-out;
+}
+.dlg {
+  width: min(320px, 100%); border-radius: 22px; overflow: hidden; text-align: center;
+  background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  box-shadow: 0 24px 60px rgba(0,0,0,.28); animation: pop .22s cubic-bezier(.2,.9,.3,1.2);
+}
+.dlg-body { padding: 22px 20px 18px; }
+.dlg-title { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.dlg-msg { font-size: 14px; color: var(--label-2); margin: 6px 0 0; line-height: 1.4; }
+.dlg-actions { display: grid; grid-template-columns: 1fr 1fr; border-top: 0.5px solid var(--sep); }
+.dlg-actions button { min-height: 48px; border: 0; background: none; font: 500 17px var(--font); color: var(--brand); cursor: pointer; }
+.dlg-actions button + button { border-left: 0.5px solid var(--sep); }
+.dlg-actions button:hover { background: var(--fill-2); }
+.dlg-actions button:active { background: var(--fill); }
+.dlg-actions button:focus-visible { outline: 0; background: var(--fill); }
+.dlg-actions .primary { font-weight: 700; }
+.dlg-actions .danger { color: var(--red); font-weight: 700; }
+.dlg-scrim.out { animation: fadeout .16s ease-in forwards; }
+.dlg-scrim.out .dlg { animation: popout .16s ease-in forwards; }
+@keyframes pop { from { transform: scale(1.12); opacity: 0; } }
+@keyframes popout { to { transform: scale(.96); opacity: 0; } }
+@keyframes fadeout { to { opacity: 0; } }
+@media (prefers-color-scheme: dark) { .dlg-actions button { color: #8f96ff; } .dlg-actions .danger { color: #ff6961; } }

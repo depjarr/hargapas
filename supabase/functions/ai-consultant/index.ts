@@ -5,6 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const DAILY_LIMIT = 30
 const MODEL = Deno.env.get('GROQ_MODEL') ?? 'openai/gpt-oss-120b'
+const FALLBACK_MODEL = 'openai/gpt-oss-20b'   // dipakai kalau model utama tidak tersedia
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -17,8 +18,20 @@ const SYSTEM =
   'Jangan mengarang harga pesaing atau data pasar; jika tidak ada, katakan analisis hanya berdasarkan biaya dan target pengguna. ' +
   'Untuk semua angka simulasi (harga, diskon, target laba) WAJIB pakai tool simulasi, jangan hitung sendiri.'
 
-// pembulatan harga yang sama dengan aplikasi
-const psy = (P: number) => (P < 10000 ? Math.ceil(P / 100) * 100 : Math.ceil((P - 900) / 1000) * 1000 + 900)
+// harga dibulatkan ke rupiah terdekat (sama dengan aplikasi, tanpa pembulatan ...900)
+const psy = (P: number) => Math.round(P)
+
+/** Jelaskan error dari Groq dalam bahasa sederhana (ditampilkan ke pengguna, tanpa membocorkan kunci). */
+function groqReason(status: number, body: string) {
+  let msg = ''
+  try { msg = JSON.parse(body)?.error?.message ?? '' } catch { msg = body }
+  msg = String(msg).replace(/gsk_[A-Za-z0-9]+/g, 'gsk_***').slice(0, 160)
+  if (status === 401) return 'Kunci GROQ_API_KEY di Supabase tidak valid. Periksa lagi di Edge Functions > Secrets (tanpa spasi/enter).'
+  if (status === 404 || /model.*(not exist|not found|decommission)/i.test(msg)) return `Model AI tidak tersedia di Groq (${msg}).`
+  if (status === 413 || /too large|tokens per minute|TPM/i.test(msg)) return 'Data yang dikirim ke AI terlalu besar untuk batas akun Groq. Coba lagi sebentar.'
+  if (status === 429) return 'Konsultan AI sedang ramai (batas Groq tercapai). Coba lagi sebentar.'
+  return `Groq menolak permintaan (kode ${status}${msg ? ': ' + msg : ''}).`
+}
 
 const TOOLS = [{
   type: 'function',
@@ -87,15 +100,16 @@ Deno.serve(async (req) => {
 
     let reply = ''
     let useTools = true
+    let model = MODEL
     for (let round = 0; round < 5; round++) {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${Deno.env.get('GROQ_API_KEY')}` },
         body: JSON.stringify({
-          model: MODEL,
+          model,
           max_completion_tokens: 1500,
           temperature: 0.3,
-          ...(MODEL.includes('gpt-oss') ? { reasoning_effort: 'low' } : {}),
+          ...(model.includes('gpt-oss') ? { reasoning_effort: 'low' } : {}),
           ...(useTools ? { tools: TOOLS } : {}),
           messages: chat,
         }),
@@ -104,7 +118,8 @@ Deno.serve(async (req) => {
         const t = await res.text()
         console.error('Groq error', res.status, t)
         if (useTools && res.status === 400 && t.includes('tool_use_failed')) { useTools = false; continue } // coba lagi tanpa tool
-        return json({ error: res.status === 429 ? 'Konsultan AI sedang ramai. Coba lagi sebentar.' : 'Konsultan AI sedang bermasalah. Coba lagi sebentar.' }, 502)
+        if (model !== FALLBACK_MODEL && (res.status === 404 || /model/i.test(t) && /not exist|not found|decommission/i.test(t))) { model = FALLBACK_MODEL; continue }
+        return json({ error: groqReason(res.status, t) }, 502)
       }
       const msg = (await res.json()).choices?.[0]?.message
       const calls = msg?.tool_calls ?? []

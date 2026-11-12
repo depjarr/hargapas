@@ -71,7 +71,8 @@ export default function Settings() {
           <p className="mu">Data tersimpan di akun Anda dan hanya terlihat oleh Anda.</p>
           <div className="row">
             <button className="btn sm soft" disabled={busy} onClick={loadSample}>Muat data contoh</button>
-            <ConfirmButton className="btn sm danger" disabled={busy} onConfirm={wipe}>Hapus semua data</ConfirmButton>
+            <ConfirmButton className="btn sm danger" disabled={busy} onConfirm={wipe}
+              confirm={{ title: 'Hapus semua data?', message: 'Semua produk, foto, riwayat, dan percakapan AI akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.', confirmLabel: 'Hapus semua' }}>Hapus semua data</ConfirmButton>
           </div>
         </div>
         <div className="group">
