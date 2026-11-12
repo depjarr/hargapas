@@ -5,6 +5,8 @@ import { useAuth } from '../lib/auth'
 import { recovery } from '../lib/recovery'
 import Icon, { Spinner } from '../components/Icon'
 import RecoveryCodeCard from '../components/RecoveryCodeCard'
+import PasswordChecklist from '../components/PasswordChecklist'
+import { passwordProblem } from '../lib/password'
 
 function Shell({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
   return (
@@ -81,7 +83,8 @@ export function Register() {
   async function submit(e: FormEvent) {
     e.preventDefault()
     setErr(''); setInfo('')
-    if (password.length < 8) return setErr('Password minimal 8 karakter.')
+    const problem = passwordProblem(password, [email, name])
+    if (problem) return setErr(problem)
     if (password !== again) return setErr('Ulangi password belum sama.')
     setBusy(true)
     const { data, error } = await supabase.auth.signUp({
@@ -90,7 +93,8 @@ export function Register() {
     })
     if (error) {
       setBusy(false)
-      return setErr(/already registered|already exists/i.test(error.message) ? 'Email ini sudah terdaftar. Coba masuk atau pakai Lupa password.' : error.message)
+      return setErr(/already registered|already exists/i.test(error.message) ? 'Email ini sudah terdaftar. Coba masuk atau pakai Lupa password.'
+        : /weak|pwned|leaked|password/i.test(error.message) ? 'Password terlalu lemah atau pernah bocor. Pakai password lain yang memenuhi semua syarat.' : error.message)
     }
     if (!data.session) {
       // verifikasi email aktif di Supabase: belum ada sesi, kode dibuat nanti di Pengaturan
@@ -121,8 +125,10 @@ export function Register() {
         {info && <div className="note ok">{info}</div>}
         <label>Nama<input required value={name} onChange={e => setName(e.target.value)} /></label>
         <label>Email<input type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
-        <label>Password (min. 8 karakter)<input type="password" required autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
-        <label>Ulangi password<input type="password" required autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} /></label>
+        <label>Password<input type="password" required autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
+        <PasswordChecklist value={password} />
+        <label>Ulangi password<input type="password" required autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} />
+          {again && again !== password && <small className="bad">Belum sama dengan password di atas.</small>}</label>
         <button className="btn block" disabled={busy}>{busy ? 'Mendaftar…' : 'Daftar'}</button>
         <p className="alt">Sudah punya akun? <Link to="/login">Masuk</Link></p>
       </form>
@@ -149,7 +155,8 @@ export function ForgotPassword() {
   async function submit(e: FormEvent) {
     e.preventDefault()
     setErr('')
-    if (password.length < 8) return setErr('Password minimal 8 karakter.')
+    const problem = passwordProblem(password, [email])
+    if (problem) return setErr(problem)
     if (password !== again) return setErr('Ulangi password belum sama.')
     setBusy(true)
     try {
@@ -183,8 +190,10 @@ export function ForgotPassword() {
           <input required autoComplete="off" autoCapitalize="characters" spellCheck={false} placeholder="HARGA-XXXX-XXXX"
             className="mono" value={code} onChange={e => setCode(e.target.value.toUpperCase())} />
         </label>
-        <label>Password baru (min. 8 karakter)<input type="password" required autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
-        <label>Ulangi password baru<input type="password" required autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} /></label>
+        <label>Password baru<input type="password" required autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
+        <PasswordChecklist value={password} />
+        <label>Ulangi password baru<input type="password" required autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} />
+          {again && again !== password && <small className="bad">Belum sama dengan password di atas.</small>}</label>
         <button className="btn block" disabled={busy}>{busy ? 'Memeriksa…' : 'Ganti password'}</button>
         <p className="alt">Kode hilang? Kalau masih bisa masuk, buat kode baru di menu Pengaturan.</p>
         <p className="alt" style={{ marginTop: 6 }}><Link to="/login">Kembali ke halaman masuk</Link></p>

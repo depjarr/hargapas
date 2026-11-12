@@ -10,3 +10,14 @@ grant usage, select on all sequences in schema public to authenticated;
 -- supaya tabel yang dibuat nanti juga ikut
 alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
 alter default privileges in schema public grant usage, select on sequences to authenticated;
+
+-- Edge Functions (recovery, push) memakai peran service_role. Di project baru peran ini juga belum otomatis
+-- punya izin ke tabel buatan SQL Editor, jadi diberi izin di sini (service_role tidak bisa dipakai dari browser).
+grant usage on schema public to service_role;
+grant select, insert, update, delete on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;
+alter default privileges in schema public grant select, insert, update, delete on tables to service_role;
+alter default privileges in schema public grant usage, select on sequences to service_role;
+
+alter default privileges in schema public grant usage, select on sequences to service_role;
+

@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import { DataProvider, useData } from '../lib/data'
 import { ToastProvider } from '../lib/toast'
 import { ConfirmProvider } from '../lib/confirm'
+import { syncPush } from '../lib/push'
 import { dd } from '../lib/format'
 import Icon from './Icon'
 
@@ -31,6 +32,7 @@ function Shell() {
   const sub = cur[0] === '/' ? `Update terakhir ${dd(new Date().toISOString())}` : cur[4]
 
   useEffect(() => { setMore(false); window.scrollTo(0, 0) }, [pathname])
+  useEffect(() => { syncPush() }, [session?.user.id])   // simpan ulang langganan notifikasi perangkat ini
   useEffect(() => {
     if (!more) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMore(false) }

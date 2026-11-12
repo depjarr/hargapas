@@ -77,7 +77,37 @@ async function currentUser(req: Request) {
 }
 
 const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60000))
+
+/** Aturan password (sama dengan web/src/lib/password.ts). */
+function passwordProblem(p: string, email: string) {
+  if (p.length > 72) return 'Password maksimal 72 karakter.'
+  if (/^\s|\s$/.test(p)) return 'Password tidak boleh diawali atau diakhiri spasi.'
+  const miss: string[] = []
+  if (p.length < 8) miss.push('minimal 8 karakter')
+  if (!/[A-Z]/.test(p)) miss.push('ada huruf besar')
+  if (!/[a-z]/.test(p)) miss.push('ada huruf kecil')
+  if (!/[0-9]/.test(p)) miss.push('ada angka')
+  if (!/[^A-Za-z0-9\s]/.test(p)) miss.push('ada simbol')
+  if (miss.length) return 'Password belum memenuhi syarat: ' + miss.join(', ') + '.'
+  const name = email.split('@')[0]
+  if (name.length >= 4 && p.toLowerCase().includes(name)) return 'Password jangan memuat nama atau email kamu.'
+  return null
+}
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** Minta function `push` mengirim peringatan keamanan (tidak mengganggu alur kalau notifikasi belum aktif). */
+async function notifySecurity(userId: string, event: 'password_reset' | 'code_created') {
+  const secret = Deno.env.get('CRON_SECRET')
+  if (!secret) return
+  try {
+    await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/push`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-cron-secret': secret },
+      body: JSON.stringify({ action: 'security', user_id: userId, event }),
+      signal: AbortSignal.timeout(8000),
+    })
+  } catch (e) { console.error('[recovery] notifikasi keamanan gagal:', e?.message ?? e) }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -96,6 +126,7 @@ Deno.serve(async (req) => {
       if (row?.created_at && Date.now() - new Date(row.created_at).getTime() < 60_000)
         return json({ error: 'Tunggu 1 menit dulu sebelum membuat kode baru.' }, 429)
       const code = await issue(user.id, user.email)
+      if (code && row?.created_at) await notifySecurity(user.id, 'code_created')   // kode lama diganti
       return code ? json({ code }) : json({ error: 'Gagal membuat kode. Coba lagi sebentar.' }, 500)
     }
 
@@ -111,8 +142,8 @@ Deno.serve(async (req) => {
       const password = String(body.password ?? '')
       if (!EMAIL.test(email)) return json({ error: 'Email belum valid.' }, 400)
       if (normalize(code).length < 8) return json({ error: 'Kode pemulihan belum lengkap.' }, 400)
-      if (password.length < 8) return json({ error: 'Password minimal 8 karakter.' }, 400)
-      if (password.length > 72) return json({ error: 'Password maksimal 72 karakter.' }, 400)
+      const weak = passwordProblem(password, email)
+      if (weak) return json({ error: weak }, 400)
 
       const { data: row } = await admin.from('recovery_codes')
         .select('user_id, code_hash, failed_attempts, locked_until').eq('email', email).maybeSingle()
@@ -143,6 +174,7 @@ Deno.serve(async (req) => {
         if (/weak|pwned|leaked/i.test(error.message)) return json({ error: 'Password ini terlalu umum atau pernah bocor. Pakai password lain ya.' }, 400)
         return json({ error: 'Gagal menyimpan password baru. Coba lagi sebentar.' }, 500)
       }
+      await notifySecurity(row.user_id, 'password_reset')
       // kode lama hangus, ganti dengan yang baru
       const next = await issue(row.user_id, email)
       return json({ ok: true, code: next })

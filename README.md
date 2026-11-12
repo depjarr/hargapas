@@ -34,12 +34,24 @@ Lupa password memakai **email + kode pemulihan**, bukan link email. Kode `HARGA-
 - 5x salah berturut-turut → email itu dikunci 15 menit.
 - Butuh Edge Function `recovery` (lihat bagian 3). Kunci service role sudah otomatis tersedia di Edge Function, jadi tidak perlu secret tambahan. Jangan pernah menaruh service role key di frontend.
 
-## 3. Edge Function (3 buah)
-Deploy **tiga** function dengan nama persis: `ai-consultant` (Konsultan AI + tool simulasi), `scan-receipt` (baca foto struk), dan `recovery` (kode pemulihan password). Secret `GROQ_API_KEY` dipakai dua function AI. Model baca gambar: `meta-llama/llama-4-scout-17b-16e-instruct` (ganti lewat secret `GROQ_VISION_MODEL`).
+## 3. Edge Function (4 buah)
+Deploy **empat** function dengan nama persis: `ai-consultant` (Konsultan AI + tool simulasi), `scan-receipt` (baca foto struk), `recovery` (kode pemulihan password), dan `push` (notifikasi). Secret `GROQ_API_KEY` dipakai dua function AI. Model baca gambar: `qwen/qwen3.8-27b` (ganti lewat secret `GROQ_VISION_MODEL`).
 
-`recovery` **wajib** di-deploy dengan `--no-verify-jwt`, karena halaman Lupa password dipakai sebelum login (function memeriksa login sendiri untuk aksi yang membutuhkannya).
+`recovery` dan `push` **wajib** di-deploy dengan `--no-verify-jwt` (function memeriksa login / kunci jadwal sendiri).
 
-## 3b. Konsultan AI (Edge Function)
+## 3a. Notifikasi (ringkasan mingguan & keamanan akun)
+1. Jalankan `supabase/migrations/006_notifications.sql` (tabel perangkat & pilihan notifikasi, jadwal tiap Senin 08.00 WIB). Kalau error soal `pg_cron`/`pg_net`, aktifkan dulu di **Database > Extensions**.
+2. Jalankan `supabase/setup-notifikasi.local.sql` sekali di SQL Editor (alamat project + kunci jadwal ke Vault). File ini berisi rahasia dan **tidak** ada di GitHub.
+3. Pasang rahasia function: `supabase secrets set --env-file supabase/functions/.env` (atau isi manual di **Edge Functions > Secrets**: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`).
+4. Deploy `push` dan deploy ulang `recovery`.
+5. Di Vercel tambahkan env `VITE_VAPID_PUBLIC_KEY` (kunci **publik**, sama dengan di `web/.env`), lalu redeploy.
+
+Kunci VAPID baru bisa dibuat dengan `npx web-push generate-vapid-keys`. Di iPhone, notifikasi hanya jalan setelah aplikasi dipasang ke Layar Utama (iOS 16.4+).
+
+## 3b. Aturan password
+Web dan function `recovery` mewajibkan: minimal 8 karakter, huruf besar, huruf kecil, angka, dan simbol. Samakan juga di **Authentication > Providers > Email > Password requirements** (minimum length 8, *Lowercase, uppercase letters, digits and symbols*) supaya pendaftaran lewat API langsung pun ikut ditolak.
+
+## 3c. Deploy semua function
 ```bash
 npm i -g supabase
 supabase login
@@ -48,6 +60,7 @@ supabase secrets set GROQ_API_KEY=gsk_xxxxx
 supabase functions deploy ai-consultant
 supabase functions deploy scan-receipt
 supabase functions deploy recovery --no-verify-jwt
+supabase functions deploy push --no-verify-jwt
 ```
 Buat API key di https://console.groq.com/keys. Model default `openai/gpt-oss-120b`; ganti dengan `supabase secrets set GROQ_MODEL=<id-model>` (daftar: https://console.groq.com/docs/models). Batas default 30 pesan/hari/user (`DAILY_LIMIT` di `index.ts`).
 

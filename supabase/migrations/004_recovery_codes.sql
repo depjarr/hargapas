@@ -15,3 +15,4 @@ create index if not exists recovery_codes_email_idx on public.recovery_codes (em
 
 alter table public.recovery_codes enable row level security;
 revoke all on public.recovery_codes from anon, authenticated;
+grant select, insert, update, delete on public.recovery_codes to service_role;   -- hanya Edge Function `recovery`

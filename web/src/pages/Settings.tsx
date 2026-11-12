@@ -9,6 +9,7 @@ import MarginInputs from '../components/MarginInputs'
 import ConfirmButton from '../components/ConfirmButton'
 import Icon from '../components/Icon'
 import RecoveryPanel from '../components/RecoveryPanel'
+import AppPanel from '../components/AppPanel'
 
 export default function Settings() {
   const d = useData()
@@ -62,6 +63,8 @@ export default function Settings() {
         <div className="cap" style={{ marginTop: 0 }}>Target untung bawaan (% dari HPP)</div>
         <MarginInputs />
         <p className="foot">Contoh: HPP Rp5.000 dengan target 40% → harga jual Rp5.000 + Rp2.000 = Rp7.000.</p>
+        <div className="cap">Aplikasi &amp; notifikasi</div>
+        <AppPanel />
       </div>
       <div>
         <div className="cap" style={{ marginTop: 0 }}>Keamanan akun</div>
