@@ -1,45 +1,50 @@
-import type { Group, Product } from './types'
+import type { Cost, Group, Product } from './types'
 
 /** Nama 3 strategi harga. */
 export const NM = ['Kompetitif', 'Seimbang', 'Premium']
 
-type Calcable = Pick<Product, 'qty' | 'sellable_qty' | 'purchase_price' | 'product_costs'>
+type Calcable = Pick<Product, 'qty' | 'product_costs'>
 
 export interface Calc {
-  sq: number        // jumlah bisa dijual
-  base: number      // total harga beli
-  fixed: number     // biaya tetap (termasuk bagian biaya bersama)
-  unit: number      // total biaya per unit
-  pct: number       // biaya persen (0.08 = 8%)
+  sq: number        // jumlah produk/porsi
+  bahan: number     // biaya bahan baku (total)
+  ops: number       // biaya operasional/tenaga kerja (total, tanpa biaya persen)
   share: number     // bagian biaya bersama grup
-  total: number     // total modal
-  hpp: number       // modal per unit bisa dijual
+  pct: number       // biaya persen dari harga jual (0.08 = 8%)
+  total: number     // total biaya produksi = bahan + ops + share
+  hpp: number       // HPP per produk/porsi
   breakEven: number // harga impas
 }
 
+/** Nilai total satu baris biaya: "total" apa adanya, "per produk" dikali jumlah produk. Persen tidak masuk biaya produksi. */
+export const lineTotal = (c: Pick<Cost, 'type' | 'value'>, sq: number) =>
+  c.type === 'unit' ? (+c.value || 0) * sq : c.type === 'fixed' ? +c.value || 0 : 0
+
+/**
+ * Rumus:
+ *   1. Total biaya produksi = biaya bahan baku + biaya operasional/tenaga kerja + bagian biaya bersama grup
+ *   2. HPP                  = total biaya produksi ÷ jumlah produk/porsi
+ *   3. Harga jual           = HPP + (target untung % × HPP)   → lihat tgt()
+ */
 export function calc(p: Calcable, share = 0): Calc {
-  const q = +p.qty || 0
-  const sq = +(p.sellable_qty ?? 0) || q || 1
-  let fixed = 0, unit = 0, pct = 0
+  const sq = +p.qty || 1
+  let bahan = 0, ops = 0, pct = 0
   for (const c of p.product_costs ?? []) {
-    const v = +c.value || 0
-    if (c.type === 'fixed') fixed += v
-    else if (c.type === 'unit') unit += v * sq
-    else pct += v / 100
+    if (c.type === 'pct') { pct += (+c.value || 0) / 100; continue }
+    if (c.category === 'operasional') ops += lineTotal(c, sq)
+    else bahan += lineTotal(c, sq)
   }
-  fixed += share
-  const base = (+p.purchase_price || 0) * q
-  const total = base + fixed + unit
+  const total = bahan + ops + share
   const hpp = total / sq
-  return { sq, base, fixed, unit, pct, share, total, hpp, breakEven: pct < 1 ? hpp / (1 - pct) : 0 }
+  return { sq, bahan, ops, share, pct, total, hpp, breakEven: pct < 1 ? hpp / (1 - pct) : 0 }
 }
 
 export const groupTotal = (g?: Group) => (g?.items ?? []).reduce((s, i) => s + (+i.value || 0), 0)
-const sellableOf = (p: { sellable_qty: number | null; qty: number }) => +(p.sellable_qty ?? 0) || +p.qty || 0
+const sellableOf = (p: { qty: number }) => +p.qty || 0
 
-/** Biaya bersama dibagi ke semua varian satu grup menurut jumlah bisa dijual. */
+/** Biaya bersama dibagi ke semua varian satu grup menurut jumlah produk. */
 export function groupInfo(
-  p: { id: string; group_id: string | null; qty: number; sellable_qty: number | null },
+  p: { id: string; group_id: string | null; qty: number },
   all: Product[], groups: Group[],
 ) {
   const g = p.group_id ? groups.find(x => x.id === p.group_id) : undefined

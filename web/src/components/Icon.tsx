@@ -27,6 +27,7 @@ const P: Record<string, string> = {
   key: 'M14.5 14a5 5 0 1 0-4.6-3L3.5 17.4V20.5h3.1v-2h2v-2h2l1.4-1.4A5 5 0 0 0 14.5 14zM16.5 7.5h.01',
   copy: 'M9 9h10.5v11.5H9zM15 9V4.5H4.5V15H9',
   check: 'm5 12.5 4.5 4.5L19 7.5',
+  swap: 'M7 4.5 3.5 8 7 11.5M3.5 8h13M17 12.5l3.5 3.5-3.5 3.5M20.5 16h-13',
   layers:'M12 3.5 3.5 8 12 12.5 20.5 8zM3.5 12 12 16.5 20.5 12M3.5 16 12 20.5 20.5 16',
 }
 export type IconName = keyof typeof P

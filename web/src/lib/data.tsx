@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from './supabase'
-import type { Chat, CostTypeRow, Group, Product, Profile } from './types'
+import type { Chat, Cost, CostTypeRow, Group, Product, Profile } from './types'
 
 interface DataCtx {
   products: Product[]; groups: Group[]; costTypes: CostTypeRow[]; chats: Chat[]; profile: Profile | null
@@ -12,6 +12,34 @@ interface DataCtx {
 }
 const Ctx = createContext<DataCtx | null>(null)
 const num = (v: unknown) => +(v as number) || 0
+
+/**
+ * Ubah baris database ke bentuk aplikasi.
+ * Data sebelum migrasi 005 (masih ada harga beli / jumlah bisa dijual) dibaca setara:
+ * harga beli × jumlah dibeli → baris bahan baku "Bahan utama", jumlah produk = jumlah bisa dijual.
+ */
+function toProduct(x: any): Product {
+  const { purchase_price, sellable_qty, material_cost, ...rest } = x
+  const costs: Cost[] = [...(x.product_costs ?? [])].map((k: any) => ({
+    ...k, value: num(k.value), category: k.category ?? (k.type === 'pct' ? 'operasional' : 'bahan'),
+  }))
+  let qty = num(x.qty)
+  const legacy = (v: number) => costs.push({ name: 'Bahan utama', type: 'fixed', value: v, note: x.pd, sort: -1, category: 'bahan' })
+  if (material_cost != null) { if (num(material_cost) > 0) legacy(num(material_cost)) }
+  else {
+    if (num(purchase_price) > 0) legacy(num(purchase_price) * qty)
+    if (num(sellable_qty) > 0) qty = num(sellable_qty)
+  }
+  return {
+    ...rest, qty,
+    sell_price: num(x.sell_price),
+    competitor_price: x.competitor_price == null ? null : num(x.competitor_price),
+    product_costs: costs.sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)),
+    price_history: (x.price_history ?? []).map((h: any) => ({
+      ...h, price: num(h.price), net: h.net == null ? null : num(h.net), margin: h.margin == null ? null : num(h.margin),
+    })),
+  }
+}
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -38,16 +66,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const err = p.error || g.error || t.error || c.error || pr.error
     if (err) { setError(err.message); setLoading(false); return }
 
-    const ps: Product[] = ((p.data ?? []) as Product[]).map(x => ({
-      ...x,
-      purchase_price: num(x.purchase_price),
-      sell_price: num(x.sell_price),
-      competitor_price: x.competitor_price == null ? null : num(x.competitor_price),
-      product_costs: [...(x.product_costs ?? [])].map(k => ({ ...k, value: num(k.value) })).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)),
-      price_history: (x.price_history ?? []).map(h => ({
-        ...h, price: num(h.price), net: h.net == null ? null : num(h.net), margin: h.margin == null ? null : num(h.margin),
-      })),
-    }))
+    const ps: Product[] = ((p.data ?? []) as any[]).map(toProduct)
     setProducts(ps)
     setGroups(((g.data ?? []) as any[]).map(x => ({
       id: x.id, name: x.name,

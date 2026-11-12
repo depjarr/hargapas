@@ -3,27 +3,38 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { must, useData } from '../lib/data'
 import { useToast } from '../lib/toast'
-import { at, calcWithGroup } from '../lib/calc'
-import { today } from '../lib/format'
+import { at, calcWithGroup, groupInfo, lineTotal } from '../lib/calc'
+import { rp, today } from '../lib/format'
 import { resizeImage } from '../lib/image'
 import { PIN_BASE, PIN_GROUP, PIN_PRODUCTS } from '../lib/sample'
 import PriceResult from '../components/PriceResult'
 import MarginInputs from '../components/MarginInputs'
 import CostTypePicker from '../components/CostTypePicker'
 import Icon, { Spinner } from '../components/Icon'
-import type { CostType, Group, Product } from '../lib/types'
+import type { CostCategory, CostType, Group, Product } from '../lib/types'
 
-interface Form { name: string; cat: string; price: string; qty: string; sellable: string; supplier: string; date: string; notes: string; pd: string; sell: string; grp: string }
-interface CostRow { n: string; t: CostType; v: string; d?: string }
+interface Form { name: string; cat: string; qty: string; supplier: string; date: string; notes: string; pd: string; sell: string; grp: string }
+interface CostRow { n: string; t: CostType; v: string; d?: string; k: CostCategory }
 interface GRow { n: string; v: string; d?: string }
-const blank = (): Form => ({ name: '', cat: '', price: '', qty: '1', sellable: '', supplier: '', date: today(), notes: '', pd: '', sell: '', grp: '' })
+const blank = (): Form => ({ name: '', cat: '', qty: '', supplier: '', date: today(), notes: '', pd: '', sell: '', grp: '' })
 const FIELDS: [keyof Form, string, string][] = [
-  ['name', 'Nama produk', 'text'], ['cat', 'Kategori', 'text'], ['price', 'Harga beli / unit (Rp)', 'number'],
-  ['qty', 'Jumlah dibeli', 'number'], ['sellable', 'Jumlah bisa dijual', 'number'],
-  ['supplier', 'Pemasok', 'text'], ['date', 'Tanggal beli', 'date'],
+  ['name', 'Nama produk', 'text'], ['cat', 'Kategori', 'text'], ['qty', 'Jumlah produk / porsi', 'number'],
+  ['supplier', 'Pemasok', 'text'], ['date', 'Tanggal produksi', 'date'],
 ]
-const PH: Partial<Record<keyof Form, string>> = { name: 'Wajib', cat: 'Opsional', price: '0', qty: '1', sellable: 'Sama dgn dibeli', supplier: 'Opsional' }
-const TYPES: [CostType, string][] = [['fixed', 'Tetap'], ['unit', 'Per unit'], ['pct', 'Persen']]
+const PH: Partial<Record<keyof Form, string>> = { name: 'Wajib', cat: 'Opsional', qty: 'mis. 50', supplier: 'Opsional' }
+const TYPE_LABEL: Record<CostType, string> = { fixed: 'Total', unit: 'Per produk', pct: 'Persen (%)' }
+const SECTIONS: { k: CostCategory; title: string; empty: string; hint: string; types: CostType[]; color: string; icon: string }[] = [
+  {
+    k: 'bahan', title: 'Bahan baku', color: 'orange', icon: 'box', types: ['fixed', 'unit'],
+    empty: 'Belum ada bahan baku. Contoh: teh, gula, es, gelas.',
+    hint: 'Total = harga semua bahan untuk seluruh produk (mis. Rp150.000). Per produk = harga per 1 produk, dikali jumlah produk otomatis.',
+  },
+  {
+    k: 'operasional', title: 'Operasional / tenaga kerja', color: 'purple', icon: 'user', types: ['fixed', 'unit', 'pct'],
+    empty: 'Belum ada biaya operasional. Contoh: tenaga kerja & listrik.',
+    hint: 'Total = untuk seluruh produk (mis. tenaga kerja & listrik Rp100.000). Persen = dipotong dari harga jual (mis. admin marketplace 8%), tidak masuk total biaya produksi.',
+  },
+]
 
 export default function ProductForm() {
   const { id } = useParams()
@@ -65,12 +76,11 @@ export default function ProductForm() {
     loaded.current = true
     const g = d.groups.find(x => x.id === existing.group_id)
     setF({
-      name: existing.name, cat: existing.category ?? '', price: String(existing.purchase_price), qty: String(existing.qty),
-      sellable: existing.sellable_qty ? String(existing.sellable_qty) : '', supplier: existing.supplier ?? '',
-      date: existing.purchased_at ?? today(), notes: existing.notes ?? '', pd: existing.pd ?? '',
+      name: existing.name, cat: existing.category ?? '', qty: String(existing.qty || ''),
+      supplier: existing.supplier ?? '', date: existing.purchased_at ?? today(), notes: existing.notes ?? '', pd: existing.pd ?? '',
       sell: existing.sell_price ? String(existing.sell_price) : '', grp: g?.name ?? '',
     })
-    setCosts(existing.product_costs.map(c => ({ n: c.name, t: c.type, v: String(c.value), d: c.note ?? undefined })))
+    setCosts(existing.product_costs.map(c => ({ n: c.name, t: c.type, v: String(c.value), d: c.note ?? undefined, k: c.category })))
     setGItems(g ? g.items.map(i => ({ n: i.name, v: String(i.value), d: i.note ?? undefined })) : [])
     gKey.current = g ? g.id : ''
     setFile(null); setDropImg(false)
@@ -85,6 +95,7 @@ export default function ProductForm() {
 
   const set = (k: keyof Form) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF(s => ({ ...s, [k]: e.target.value }))
   const setCost = (i: number, p: Partial<CostRow>) => setCosts(cs => cs.map((x, j) => (j === i ? { ...x, ...p } : x)))
+  const addCost = (k: CostCategory, row?: Partial<CostRow>) => setCosts(cs => [...cs, { n: '', t: 'fixed', v: '', k, ...row }])
   const setG = (i: number, p: Partial<GRow>) => setGItems(gs => gs.map((x, j) => (j === i ? { ...x, ...p } : x)))
 
   // hitung langsung (grup yang sedang diedit ikut dihitung)
@@ -93,17 +104,18 @@ export default function ProductForm() {
     ? [...d.groups.filter(g => g.id !== gid), { id: gid, name: gName, items: gItems.map(i => ({ name: i.n, value: +i.v || 0 })) }]
     : d.groups
   const draft = {
-    id: id ?? '', group_id: gid, qty: +f.qty || 0, sellable_qty: f.sellable ? +f.sellable : null, purchase_price: +f.price || 0,
-    product_costs: costs.map(c => ({ name: c.n, type: c.t, value: +c.v || 0 })),
+    id: id ?? '', group_id: gid, qty: +f.qty || 0,
+    product_costs: costs.map(c => ({ name: c.n, type: c.t, value: +c.v || 0, category: c.k })),
   } as Product
   const c = calcWithGroup(draft, d.products, groupsDraft)
+  const gi = groupInfo(draft, d.products, groupsDraft)
   const sell = +f.sell || 0
+  const subtotal = (k: CostCategory) => (k === 'bahan' ? c.bahan : c.ops)
 
   function fillExample() {
     const s = PIN_PRODUCTS[0]
-    setF({ ...blank(), name: s.name, cat: PIN_BASE.category, price: String(PIN_BASE.purchase_price), qty: String(PIN_BASE.qty),
-      sellable: String(PIN_BASE.sellable_qty), pd: PIN_BASE.pd, notes: PIN_BASE.notes, sell: String(s.sell), grp: PIN_GROUP.name })
-    setCosts(s.costs.map(x => ({ n: x.name, t: x.type, v: String(x.value), d: x.note })))
+    setF({ ...blank(), name: s.name, cat: PIN_BASE.category, qty: String(PIN_BASE.qty), notes: PIN_BASE.notes, sell: String(s.sell), grp: PIN_GROUP.name })
+    setCosts(s.costs.map(x => ({ n: x.name, t: x.type, v: String(x.value), d: x.note, k: x.category })))
     setGItems(PIN_GROUP.items.map(i => ({ n: i.name, v: String(i.value), d: i.note })))
     gKey.current = d.groups.find(g => g.name.toLowerCase() === PIN_GROUP.name.toLowerCase())?.id ?? 'new:' + PIN_GROUP.name.toLowerCase()
     setFile(null); setDropImg(false)
@@ -111,8 +123,8 @@ export default function ProductForm() {
 
   async function save() {
     if (!f.name.trim()) return toast('Nama produk wajib diisi', true)
-    if (!(+f.price > 0) || !(+f.qty > 0)) return toast('Harga beli dan jumlah harus lebih dari 0', true)
-    if (+f.sellable > +f.qty) return toast('Jumlah bisa dijual tidak boleh melebihi jumlah dibeli', true)
+    if (!(+f.qty > 0)) return toast('Jumlah produk / porsi harus lebih dari 0', true)
+    if (!(c.total > 0)) return toast('Isi bahan baku, biaya operasional, atau biaya bersama lebih dulu', true)
     if (!(sell > 0)) return toast('Pilih atau isi harga jual lebih dulu (klik “Pakai harga ini”)', true)
     setBusy(true)
     try {
@@ -146,7 +158,7 @@ export default function ProductForm() {
 
       const row = {
         name: f.name.trim(), category: f.cat.trim() || null, supplier: f.supplier.trim() || null,
-        purchase_price: +f.price, qty: +f.qty, sellable_qty: f.sellable ? +f.sellable : null, sell_price: sell,
+        qty: +f.qty, sell_price: sell,
         notes: f.notes.trim() || null, pd: f.pd.trim() || null, purchased_at: f.date || null, group_id, image_path,
       }
       let pid = id
@@ -158,7 +170,10 @@ export default function ProductForm() {
       }
 
       must(await supabase.from('product_costs').delete().eq('product_id', pid!))
-      const cr = costs.filter(x => x.n.trim()).map((x, k) => ({ product_id: pid, name: x.n.trim(), type: x.t, value: +x.v || 0, note: x.d ?? null, sort: k }))
+      const cr = costs.filter(x => x.n.trim() || +x.v).map((x, k) => ({
+        product_id: pid, name: x.n.trim() || (x.k === 'bahan' ? 'Bahan baku' : 'Operasional'), type: x.t, value: +x.v || 0,
+        note: x.d ?? null, sort: k, category: x.k,
+      }))
       if (cr.length) must(await supabase.from('product_costs').insert(cr))
 
       // riwayat perhitungan
@@ -169,7 +184,8 @@ export default function ProductForm() {
       toast('Produk tersimpan')
       nav('/produk')
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Gagal menyimpan produk.', true)
+      const m = e instanceof Error ? e.message : 'Gagal menyimpan produk.'
+      toast(/category|column/i.test(m) ? 'Database belum diperbarui. Jalankan migrasi 005_rumus_baru.sql di Supabase dulu.' : m, true)
       setBusy(false)
     }
   }
@@ -181,12 +197,12 @@ export default function ProductForm() {
   return (
     <>
       <div className="row between" style={{ marginBottom: 6 }}>
-        <p className="mu" style={{ margin: 0, flex: '1 1 240px' }}>Isi data pembelian dan biaya, harga jual langsung dihitung.</p>
+        <p className="mu" style={{ margin: 0, flex: '1 1 240px' }}>Isi bahan baku, biaya operasional, dan biaya bersama. Harga jual langsung dihitung.</p>
         {!id && <button type="button" className="btn sm soft" onClick={fillExample}>Isi contoh</button>}
       </div>
       <div className="split">
         <div>
-          <div className="cap">Data pembelian</div>
+          <div className="cap">Data produk</div>
           <div className="form">
             {FIELDS.map(([k, label, type]) => (
               <label className="fld" key={k}>
@@ -210,28 +226,46 @@ export default function ProductForm() {
             <label className="fld col"><span>Catatan</span><textarea value={f.notes} onChange={set('notes')} /></label>
           </div>
 
-          <div className="cap">Biaya tambahan</div>
-          <div className="form">
-            {costs.map((x, i) => (
-              <div className="costrow" key={i}>
-                <input value={x.n} aria-label="Nama biaya" placeholder="Nama biaya" onChange={e => setCost(i, { n: e.target.value })} />
-                <select value={x.t} aria-label="Jenis biaya" onChange={e => setCost(i, { t: e.target.value as CostType })}>
-                  {TYPES.map(t => <option key={t[0]} value={t[0]}>{t[1]}</option>)}
-                </select>
-                <input type="number" inputMode="decimal" min="0" step="any" aria-label="Nilai biaya" placeholder={x.t === 'pct' ? '%' : 'Rp'} value={x.v} onChange={e => setCost(i, { v: e.target.value })} />
-                <button type="button" className="x" aria-label="Hapus biaya" onClick={() => setCosts(cs => cs.filter((_, j) => j !== i))}><Icon n="trash" /></button>
-              </div>
-            ))}
-            <div style={{ padding: '14px 16px 6px' }}>
-              <CostTypePicker
-                onCost={n => setCosts(cs => [...cs, { n: n.n, t: n.t, v: String(n.v || ''), d: n.d }])}
-                onBuy={b => setF(s => ({ ...s, price: String(b.price), pd: b.pd, name: s.name || b.name, qty: +s.qty > 1 ? s.qty : String(b.qty) }))}
-              />
-            </div>
-          </div>
-          <p className="foot">Tetap = total, dibagi rata ke jumlah bisa dijual. Per unit = dikali jumlah. Persen = dipotong dari harga jual (mis. admin marketplace).</p>
+          {SECTIONS.map(sec => {
+            const rows = costs.map((x, i) => ({ x, i })).filter(r => r.x.k === sec.k)
+            const other: CostCategory = sec.k === 'bahan' ? 'operasional' : 'bahan'
+            return (
+              <section key={sec.k}>
+                <div className="cap sech">
+                  <span><span className={`dot c-${sec.color}`} />{sec.title}</span>
+                  <b>{rp(subtotal(sec.k))}</b>
+                </div>
+                <div className="form">
+                  {rows.length === 0 && <div className="li mu" style={{ fontSize: 14 }}>{sec.empty}</div>}
+                  {rows.map(({ x, i }) => (
+                    <div className="costrow" key={i}>
+                      <input value={x.n} aria-label={`Nama ${sec.title}`} placeholder={sec.k === 'bahan' ? 'Nama bahan' : 'Nama biaya'} onChange={e => setCost(i, { n: e.target.value })} />
+                      <select value={x.t} aria-label="Cara hitung" onChange={e => setCost(i, { t: e.target.value as CostType })}>
+                        {sec.types.map(t => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
+                      </select>
+                      <input type="number" inputMode="decimal" min="0" step="any" aria-label="Nilai" placeholder={x.t === 'pct' ? '%' : 'Rp'} value={x.v} onChange={e => setCost(i, { v: e.target.value })} />
+                      <button type="button" className="x mv" title={`Pindah ke ${other === 'bahan' ? 'Bahan baku' : 'Operasional'}`}
+                        aria-label={`Pindah ke ${other === 'bahan' ? 'Bahan baku' : 'Operasional'}`}
+                        onClick={() => setCost(i, { k: other, t: other === 'bahan' && x.t === 'pct' ? 'fixed' : x.t })}><Icon n="swap" /></button>
+                      <button type="button" className="x" aria-label="Hapus" onClick={() => setCosts(cs => cs.filter((_, j) => j !== i))}><Icon n="trash" /></button>
+                      {x.t === 'unit' && +x.v > 0 && <small className="rowcalc">{rp(+x.v)} × {c.sq} = {rp(lineTotal({ type: 'unit', value: +x.v }, c.sq))}</small>}
+                    </div>
+                  ))}
+                  <button type="button" className="li addrow" onClick={() => addCost(sec.k)}><Icon n="plus" /> Tambah {sec.title.toLowerCase()}</button>
+                  <div style={{ padding: '12px 16px 6px', borderTop: '0.5px solid var(--sep)' }}>
+                    <CostTypePicker category={sec.k}
+                      onCost={n => addCost(n.k, { n: n.n, t: n.k === 'bahan' && n.t === 'pct' ? 'fixed' : n.t, v: String(n.v || ''), d: n.d })} />
+                  </div>
+                </div>
+                <p className="foot">{sec.hint}</p>
+              </section>
+            )
+          })}
 
-          <div className="cap">Varian &amp; biaya bersama</div>
+          <div className="cap sech">
+            <span><span className="dot c-teal" />Biaya bersama grup (varian)</span>
+            <b>{rp(c.share)}</b>
+          </div>
           <div className="form">
             <label className="fld">
               <span>Nama grup</span>
@@ -242,18 +276,23 @@ export default function ProductForm() {
               <>
                 {gItems.map((x, i) => (
                   <div className="costrow g" key={i}>
-                    <input value={x.n} aria-label="Nama biaya bersama" onChange={e => setG(i, { n: e.target.value })} />
-                    <input type="number" inputMode="decimal" min="0" aria-label="Nilai biaya bersama" value={x.v} onChange={e => setG(i, { v: e.target.value })} />
+                    <input value={x.n} aria-label="Nama biaya bersama" placeholder="Nama biaya" onChange={e => setG(i, { n: e.target.value })} />
+                    <input type="number" inputMode="decimal" min="0" aria-label="Total biaya bersama (Rp)" placeholder="Rp" value={x.v} onChange={e => setG(i, { v: e.target.value })} />
                     <button type="button" className="x" aria-label="Hapus" onClick={() => setGItems(gs => gs.filter((_, j) => j !== i))}><Icon n="trash" /></button>
                   </div>
                 ))}
-                <button type="button" className="li" style={{ color: 'var(--brand)' }} onClick={() => setGItems(gs => [...gs, { n: 'Alat cetak', v: '0' }])}>
+                <button type="button" className="li addrow" onClick={() => setGItems(gs => [...gs, { n: '', v: '' }])}>
                   <Icon n="plus" /> Tambah biaya bersama (total Rp)
                 </button>
+                {gi && gi.total > 0 && (
+                  <div className="li mu" style={{ fontSize: 13.5 }}>
+                    Bagian produk ini: {rp(gi.total)} ÷ {gi.M} produk di grup × {gi.sq} = <b style={{ color: 'var(--label)' }}>{rp(c.share)}</b>
+                  </div>
+                )}
               </>
             )}
           </div>
-          <p className="foot">Varian yang memakai alat/biaya yang sama? Beri nama grup yang sama. Biaya dibagi ke semua varian menurut jumlah bisa dijual.</p>
+          <p className="foot">Untuk alat/biaya yang dipakai beberapa varian. Beri nama grup yang sama di tiap varian; biaya dibagi menurut jumlah produk.</p>
 
           <div className="cap">Target untung (% dari HPP)</div>
           <MarginInputs />

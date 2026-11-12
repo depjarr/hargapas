@@ -30,11 +30,11 @@ export default function Settings() {
       for (const s of PIN_PRODUCTS) {
         if (d.products.some(p => p.name === s.name)) continue
         const r = await supabase.from('products').insert({
-          name: s.name, category: PIN_BASE.category, purchase_price: PIN_BASE.purchase_price, qty: PIN_BASE.qty,
-          sellable_qty: PIN_BASE.sellable_qty, sell_price: s.sell, pd: PIN_BASE.pd, notes: PIN_BASE.notes, group_id: gid, purchased_at: today(),
+          name: s.name, category: PIN_BASE.category, qty: PIN_BASE.qty,
+          sell_price: s.sell, notes: PIN_BASE.notes, group_id: gid, purchased_at: today(),
         }).select('id').single()
         must(r)
-        must(await supabase.from('product_costs').insert(s.costs.map((c, k) => ({ product_id: r.data!.id, name: c.name, type: c.type, value: c.value, note: c.note ?? null, sort: k }))))
+        must(await supabase.from('product_costs').insert(s.costs.map((c, k) => ({ product_id: r.data!.id, name: c.name, type: c.type, value: c.value, note: c.note ?? null, sort: k, category: c.category }))))
       }
       await d.reload()
       toast('Data contoh dimuat')

@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { must, useData } from '../lib/data'
@@ -20,16 +21,22 @@ export default function ProductDetail() {
 
   const c = calcWithGroup(p, d.products, d.groups)
   const gi = groupInfo(p, d.products, d.groups)
-  const sq = c.sq, q = +p.qty || 0, f = c.pct
+  const sq = c.sq, f = c.pct
   const img = p.image_path ? d.images[p.image_path] : ''
 
-  const R: [string, string, string, number][] = [[`${p.name} (harga beli)`, p.pd ?? '', `${rp(p.purchase_price)} × ${q} pcs`, c.base]]
-  p.product_costs.forEach(x => {
-    const v = +x.value || 0
-    if (x.type === 'fixed') R.push([x.name, x.note ?? '', `${rp(v)} (total)`, v])
-    else if (x.type === 'unit') R.push([x.name, x.note ?? '', `${rp(v)} × ${sq} pcs`, v * sq])
-  })
-  gi?.g.items.forEach(x => R.push([`${x.name} (bersama, grup ${gi.g.name})`, x.note ?? '', `${rp(x.value)} ÷ ${gi.M} pcs × ${sq} pcs`, ((+x.value || 0) / gi.M) * sq]))
+  type Row = [string, string, string, number]
+  const rowsOf = (k: 'bahan' | 'operasional'): Row[] => p.product_costs
+    .filter(x => x.category === k && x.type !== 'pct')
+    .map(x => {
+      const v = +x.value || 0
+      return x.type === 'unit' ? [x.name, x.note ?? '', `${rp(v)} × ${sq} produk`, v * sq] : [x.name, x.note ?? '', `${rp(v)} (total)`, v]
+    })
+  const GROUPS: [string, string, Row[], number][] = [
+    ['Bahan baku', 'orange', rowsOf('bahan'), c.bahan],
+    ['Operasional / tenaga kerja', 'purple', rowsOf('operasional'), c.ops],
+    [`Biaya bersama grup${gi ? ' ' + gi.g.name : ''}`, 'teal',
+      (gi?.g.items ?? []).map(x => [x.name, x.note ?? '', `${rp(x.value)} ÷ ${gi!.M} produk × ${sq}`, ((+x.value || 0) / gi!.M) * sq] as Row), c.share],
+  ]
   const pcs = p.product_costs.filter(x => x.type === 'pct')
   const mem = p.group_id ? d.products.filter(x => x.group_id === p.group_id) : []
   const a = p.sell_price > 0 ? at(c, p.sell_price) : null
@@ -72,7 +79,7 @@ export default function ProductDetail() {
           <ul className="feats">
             <li><span className="ico sm c-blue"><Icon n="calc" /></span>HPP {rp(c.hpp)} per pcs</li>
             {a && <li><span className="ico sm c-green"><Icon n="trend" /></span>Untung {rp(a.net)} per pcs</li>}
-            <li><span className="ico sm c-orange"><Icon n="box" /></span>{q} pcs dibeli, {sq} pcs bisa dijual</li>
+            <li><span className="ico sm c-orange"><Icon n="box" /></span>{sq} produk / porsi</li>
             <li><span className="ico sm c-purple"><Icon n="layers" /></span>{gi ? `Grup varian ${gi.g.name}` : 'Tanpa grup varian'}</li>
           </ul>
 
@@ -86,7 +93,7 @@ export default function ProductDetail() {
 
       <div className="strip">
         <div><span className="ico sm c-blue"><Icon n="wallet" /></span><span><b>{rp(c.total)}</b><small>Total biaya produksi</small></span></div>
-        <div><span className="ico sm c-orange"><Icon n="calc" /></span><span><b>{rp(c.hpp)}</b><small>HPP per pcs</small></span></div>
+        <div><span className="ico sm c-orange"><Icon n="calc" /></span><span><b>{rp(c.hpp)}</b><small>HPP per produk</small></span></div>
         <div><span className="ico sm c-green"><Icon n="trend" /></span><span><b className={a && a.net < 0 ? 'bad' : ''}>{a ? rp(a.net) : '-'}</b><small>Untung per pcs</small></span></div>
         <div><span className="ico sm c-purple"><Icon n="chart" /></span><span><b className={a && a.net < 0 ? 'bad' : ''}>{a ? rp(a.total) : '-'}</b><small>Total untung ({sq} pcs)</small></span></div>
       </div>
@@ -94,15 +101,20 @@ export default function ProductDetail() {
       <div className="card">
         <h2>1. Total biaya produksi</h2>
         <div className="scroll"><table>
-          <thead><tr><th>Item</th><th>Rumus</th><th>Total</th><th>Per pcs</th></tr></thead>
+          <thead><tr><th>Item</th><th>Rumus</th><th>Total</th><th>Per produk</th></tr></thead>
           <tbody>
-            {R.map((r, i) => (
-              <tr key={i}><td>{r[0]}{r[1] && <><br /><small>{r[1]}</small></>}</td><td>{r[2]}</td><td>{rp(r[3])}</td><td>{rp(r[3] / sq)}</td></tr>
+            {GROUPS.map(([title, color, rows, sub]) => (
+              <Fragment key={title}>
+                <tr className="grp"><th colSpan={2}><span className={`dot c-${color}`} />{title}</th><th>{rp(sub)}</th><th>{rp(sub / sq)}</th></tr>
+                {rows.length
+                  ? rows.map((r, i) => <tr key={i}><td>{r[0]}{r[1] && <><br /><small>{r[1]}</small></>}</td><td>{r[2]}</td><td>{rp(r[3])}</td><td>{rp(r[3] / sq)}</td></tr>)
+                  : <tr><td colSpan={4} className="mu">Tidak ada</td></tr>}
+              </Fragment>
             ))}
-            <tr><th>Total biaya produksi</th><th>jumlah semua baris</th><th>{rp(c.total)}</th><th>{rp(c.hpp)}</th></tr>
+            <tr className="tot"><th>Total biaya produksi</th><th>bahan baku + operasional + biaya bersama</th><th>{rp(c.total)}</th><th>{rp(c.hpp)}</th></tr>
           </tbody>
         </table></div>
-        <p style={{ marginTop: 12 }}><b>2. HPP per pcs</b> = total biaya ÷ jumlah bisa dijual = {rp(c.total)} ÷ {sq} = <b>{rp(c.hpp)}</b></p>
+        <p style={{ marginTop: 12 }}><b>2. HPP per produk</b> = total biaya produksi ÷ jumlah produk = {rp(c.total)} ÷ {sq} = <b>{rp(c.hpp)}</b></p>
         {pcs.length > 0 && (
           <div className="note info" style={{ marginTop: 12, marginBottom: 0 }}>
             <b>Biaya persen</b> (tidak masuk modal, dipotong dari harga jual):{' '}

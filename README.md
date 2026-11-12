@@ -7,8 +7,21 @@ Stack: React + Vite + TypeScript (frontend) · Supabase Auth/Postgres/Storage (b
 2. Buka **SQL Editor**, paste isi `supabase/migrations/001_schema.sql`, klik **Run**.
    (Membuat tabel, RLS, trigger profil otomatis, dan bucket foto `product-images`.)
 3. Jalankan juga `supabase/migrations/003_flow_parity.sql` (tabel grup biaya, jenis biaya, riwayat, percakapan AI).
-4. Jalankan juga `supabase/migrations/002_grants.sql` (urutan: 001, 002, 003, lalu 004) (memberi izin akses tabel ke user yang login; tanpa ini muncul error "permission denied for table ...").
+4. Jalankan juga `supabase/migrations/002_grants.sql` (urutan: 001, 002, 003, 004, lalu 005) (memberi izin akses tabel ke user yang login; tanpa ini muncul error "permission denied for table ...").
 5. Jalankan `supabase/migrations/004_recovery_codes.sql` (tabel kode pemulihan password).
+6. Jalankan `supabase/migrations/005_rumus_baru.sql` (biaya dipisah jadi bahan baku / operasional / biaya bersama, kolom "harga beli" dihapus). **Wajib dijalankan sebelum memakai versi web terbaru**, kalau tidak, menyimpan produk akan gagal. Data lama diubah otomatis **tanpa mengubah HPP**:
+   - harga beli × jumlah dibeli → baris bahan baku "Bahan utama"
+   - jumlah bisa dijual → jumlah produk
+   - biaya persen dan biaya bernama tenaga kerja/listrik/sewa/admin/dll → operasional, sisanya → bahan baku (bisa dipindah lewat tombol ⇄ di Kalkulator)
+   - kolom `purchase_price`, `sellable_qty` (dan `material_cost` kalau ada) dihapus dari tabel `products`
+
+### Rumus harga jual
+1. **Total biaya produksi** = bahan baku + operasional/tenaga kerja + bagian biaya bersama grup
+2. **HPP per produk** = total biaya produksi ÷ jumlah produk/porsi
+3. **Harga jual** = HPP + (target untung % × HPP)
+
+Contoh: Rp150.000 + Rp100.000 = Rp250.000 → ÷ 50 porsi = Rp5.000 → Rp5.000 + 40% = **Rp7.000**.
+Biaya persen (admin marketplace, biaya pembayaran) tidak masuk total biaya produksi; harga jual dinaikkan supaya potongan itu tidak memakan untung.
 
 ## 2. Auth
 Login hanya dengan **email + password** (Authentication > Providers > Email, aktif secara default). Tidak ada login Google.

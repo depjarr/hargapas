@@ -10,7 +10,7 @@ export default function PriceResult({ c, sell, margins, onUse }:
   if (!c.hpp) return (
     <div className="card empty">
       <span className="ico c-orange"><Icon n="calc" /></span>
-      Isi harga beli dan jumlah untuk melihat harga jual.
+      Isi biaya bahan baku, jumlah produk, dan biaya operasional untuk melihat harga jual.
     </div>
   )
 
@@ -20,17 +20,16 @@ export default function PriceResult({ c, sell, margins, onUse }:
   const z = pr ? at(c, pr) : null
   const a = sell > 0 ? at(c, sell) : null
 
-  // komponen total biaya produksi
-  const parts: [string, number][] = [['harga beli / bahan baku', c.base]]
-  if (c.fixed) parts.push(['biaya tetap', c.fixed])
-  if (c.unit) parts.push(['biaya per unit', c.unit])
+  // 1. Total biaya produksi = bahan baku + operasional/tenaga kerja + bagian biaya bersama grup
+  const parts: [string, number][] = [['bahan baku', c.bahan], ['operasional / tenaga kerja', c.ops]]
+  if (c.share) parts.push(['biaya bersama grup', c.share])
 
   return (
     <>
       <div className="kpis k3">
         <div className="kpi"><small>Total biaya produksi</small><b>{rp(c.total)}</b></div>
-        <div className="kpi"><small>HPP / unit</small><b>{rp(c.hpp)}</b></div>
-        <div className="kpi"><small>Jumlah dijual</small><b>{c.sq} unit</b></div>
+        <div className="kpi"><small>HPP / produk</small><b>{rp(c.hpp)}</b></div>
+        <div className="kpi"><small>Jumlah produk</small><b>{c.sq}</b></div>
       </div>
 
       <div className="seg" role="group" aria-label="Pilih strategi harga">
@@ -45,9 +44,9 @@ export default function PriceResult({ c, sell, margins, onUse }:
         <div className="pricehero">
           <small>Harga jual disarankan · {NM[pick]}</small>
           <span className="big">{rp(pr)}</span>
-          <small>per unit</small>
+          <small>per produk</small>
           <div className="meta">
-            <span>Untung {rp(z.net)}/unit</span>
+            <span>Untung {rp(z.net)}/produk</span>
             <span>{pc(z.untung)} dari modal</span>
             <span>Total {rp(z.total)}</span>
           </div>
@@ -63,19 +62,19 @@ export default function PriceResult({ c, sell, margins, onUse }:
           <li><div>
             <b>Total biaya produksi</b>
             <span className="eq">
-              {parts.length > 1 ? <>{parts.map(([, v]) => rp(v)).join(' + ')} = </> : null}
+              {parts.map(([, v]) => rp(v)).join(' + ')} ={' '}
               <span className="res">{rp(c.total)}</span>
             </span>
             <small>{parts.map(([l]) => l).join(' + ')}</small>
           </div></li>
           <li><div>
-            <b>HPP per unit</b>
-            <span className="eq">{rp(c.total)} ÷ {c.sq} unit = <span className="res">{rp(c.hpp)}</span></span>
+            <b>HPP per produk</b>
+            <span className="eq">{rp(c.total)} ÷ {c.sq} produk = <span className="res">{rp(c.hpp)}</span></span>
           </div></li>
           <li><div>
             <b>Harga jual (HJ)</b>
             <span className="eq">
-              {rp(c.hpp)} + ({m}% × {rp(c.hpp)}) = {rp(c.hpp)} + {rp(s.laba)} = <span className="res">{rp(s.hj)}</span> per unit
+              {rp(c.hpp)} + ({m}% × {rp(c.hpp)}) = {rp(c.hpp)} + {rp(s.laba)} = <span className="res">{rp(s.hj)}</span> per produk
             </span>
           </div></li>
           {c.pct > 0 && (
@@ -91,8 +90,8 @@ export default function PriceResult({ c, sell, margins, onUse }:
       {a && (
         <div className="card">
           <h2>Kalau dijual {rp(sell)}</h2>
-          <div className="kpis" style={{ marginBottom: 0 }}>
-            <div className="kpi flat"><small>Untung / unit</small><b className={a.net < 0 ? 'bad' : 'ok'}>{rp(a.net)}</b></div>
+          <div className="kpis k2" style={{ marginBottom: 0 }}>
+            <div className="kpi flat"><small>Untung / produk</small><b className={a.net < 0 ? 'bad' : 'ok'}>{rp(a.net)}</b></div>
             <div className="kpi flat"><small>Untung dari modal</small><b>{pc(a.untung)}</b></div>
             <div className="kpi flat"><small>Biaya persen</small><b>{rp(a.fee)}</b></div>
             <div className="kpi flat"><small>Total untung</small><b className={a.net < 0 ? 'bad' : 'ok'}>{rp(a.total)}</b></div>

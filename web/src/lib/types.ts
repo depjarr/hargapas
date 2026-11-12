@@ -1,6 +1,7 @@
 export type CostType = 'fixed' | 'unit' | 'pct'
 
-export interface Cost { id?: string; name: string; type: CostType; value: number; note?: string | null; sort?: number }
+export type CostCategory = 'bahan' | 'operasional'
+export interface Cost { id?: string; name: string; type: CostType; value: number; note?: string | null; sort?: number; category: CostCategory }
 export interface Hist { id: string; product_id: string; price: number; net: number | null; margin: number | null; created_at: string }
 
 export interface Product {
@@ -10,13 +11,11 @@ export interface Product {
   name: string
   category: string | null
   supplier: string | null
-  purchase_price: number
-  qty: number
-  sellable_qty: number | null
+  qty: number                   // jumlah produk/porsi
   sell_price: number
   competitor_price: number | null
   aud: string | null            // target pelanggan
-  pd: string | null             // keterangan harga beli
+  pd: string | null             // catatan lama (tidak ditampilkan di form)
   purchased_at: string | null
   notes: string | null
   image_path: string | null

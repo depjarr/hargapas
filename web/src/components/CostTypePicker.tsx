@@ -5,21 +5,19 @@ import { useToast } from '../lib/toast'
 import { fnErrorMessage } from '../lib/fn'
 import { resizeToDataUrl } from '../lib/image'
 import { rp } from '../lib/format'
-import type { CostType } from '../lib/types'
+import type { CostCategory, CostType } from '../lib/types'
 import Icon from './Icon'
 
-export interface NewCost { n: string; t: CostType; v: number; d?: string }
+export interface NewCost { n: string; t: CostType; v: number; d?: string; k: CostCategory }
 interface Props {
   onCost: (c: NewCost) => void
-  onBuy: (b: { price: number; pd: string; name: string; qty: number }) => void
+  category: CostCategory
 }
-interface OcItem { n: string; q: number; t: number; u: 'buy' | 'unit' | 'fixed'; on: boolean }
+interface OcItem { n: string; q: number; t: number; u: 'unit' | 'fixed'; on: boolean }
 
-const BUY = 'buy'
-const BUY_LABEL = 'Harga beli produk (barang utama)'
 
 /** Kolom "Jenis biaya": pilih / tambah jenis biaya, isi manual, atau scan struk. */
-export default function CostTypePicker({ onCost, onBuy }: Props) {
+export default function CostTypePicker({ onCost, category }: Props) {
   const { costTypes, refreshTypes } = useData()
   const toast = useToast()
   const [sel, setSel] = useState('')      // '' | 'buy' | id jenis biaya
@@ -32,8 +30,8 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const selType = costTypes.find(c => c.id === sel)
-  const shown = sel === BUY ? BUY_LABEL : (selType?.name ?? text)
-  const ready = sel === BUY || !!selType
+  const shown = selType?.name ?? text
+  const ready = !!selType
   const q = text.trim().toLowerCase()
   const list = q ? costTypes.filter(c => c.name.toLowerCase().includes(q)) : costTypes
 
@@ -63,7 +61,6 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
     if (e.key === 'Escape') { setOpen(false); return }
     if (e.key !== 'Enter') return
     e.preventDefault()
-    if (sel === BUY) return
     const v = e.currentTarget.value.trim()
     if (!v) return
     const ex = costTypes.find(c => c.name.toLowerCase() === v.toLowerCase())
@@ -71,8 +68,7 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
   }
 
   function manual() {
-    if (sel === BUY) return toast('Isi harga beli di kartu Data pembelian')
-    if (selType) onCost({ n: selType.name, t: selType.type, v: selType.value || 0 })
+    if (selType) onCost({ n: selType.name, t: selType.type, v: selType.value || 0, k: category })
   }
 
   async function onFile(f?: File) {
@@ -86,7 +82,7 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
       if (error) throw new Error(await fnErrorMessage(error, 'Pembacaan gambar gagal.'))
       const items: OcItem[] = (data?.items ?? []).map((x: { name?: string; qty?: number; total?: number; kind?: string }) => ({
         n: x.name || '', q: +(x.qty ?? 1) || 1, t: +(x.total ?? 0) || 0,
-        u: sel === BUY ? 'buy' : (x.kind === 'barang' ? 'unit' : 'fixed'), on: true,
+        u: x.kind === 'barang' ? 'unit' : 'fixed', on: true,
       }))
       if (!items.length) setMsg({ err: true, m: 'Tidak ada item terbaca. Coba gambar yang lebih jelas atau isi manual.' })
       setOc(items)
@@ -99,12 +95,11 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
 
   function addAll() {
     let n = 0
-    const nm = sel === BUY ? 'Harga beli' : (selType?.name ?? '')
+    const nm = selType?.name ?? ''
     oc.filter(x => x.on && x.t).forEach(x => {
       const q = x.q > 0 ? x.q : 1
       const d = 'Dari struk: ' + rp(x.t) + (x.u === 'fixed' ? '' : ' ÷ ' + q + ' pcs')
-      if (x.u === 'buy') onBuy({ price: Math.round((x.t / q) * 100) / 100, pd: d, name: x.n, qty: q })
-      else onCost({ n: x.n ? nm + ': ' + x.n : nm, t: x.u, v: x.u === 'unit' ? Math.round((x.t / q) * 100) / 100 : x.t, d })
+      onCost({ n: x.n ? nm + ': ' + x.n : nm, t: x.u, v: x.u === 'unit' ? Math.round((x.t / q) * 100) / 100 : x.t, d, k: category })
       n++
     })
     setOc([])
@@ -112,23 +107,20 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
   }
   const upd = (i: number, patch: Partial<OcItem>) => setOc(o => o.map((x, j) => (j === i ? { ...x, ...patch } : x)))
 
-  const opts: [OcItem['u'], string][] = sel === BUY
-    ? [['buy', 'Harga beli produk (total ÷ jumlah pcs)']]
-    : [['unit', 'Biaya per unit (total ÷ jumlah pcs)'], ['fixed', 'Biaya tetap (total, dibagi ke semua unit)']]
+  const opts: [OcItem['u'], string][] = [['unit', 'Per produk (total ÷ jumlah pcs)'], ['fixed', 'Total (dibagi ke semua produk)']]
 
   return (
     <>
       <div className="combo" ref={box}>
-        <label>Jenis biaya
+        <label>Pilih dari daftar tersimpan / scan struk
           <input value={shown} autoComplete="off" enterKeyHint="done"
-            placeholder="Ketik jenis biaya lalu Enter, atau pilih dari daftar"
+            placeholder="Ketik nama biaya lalu Enter, atau pilih"
             onFocus={() => setOpen(true)}
             onChange={e => { setSel(''); setText(e.target.value); setOpen(true); setOc([]); setMsg(null) }}
             onKeyDown={onKey} />
         </label>
         {open && (
           <div className="ctl">
-            <div className="ci" onClick={() => choose(BUY)}><span>{BUY_LABEL}</span></div>
             {list.map(c => (
               <div className="ci" key={c.id} onClick={() => choose(c.id)}>
                 <span>{c.name}</span>
@@ -145,7 +137,7 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
       {ready ? (
         <div style={{ margin: '4px 0 10px' }}>
           <div className="row">
-            <button type="button" className="btn sm" onClick={manual}><Icon n="plus" />Isi manual</button>
+            <button type="button" className="btn sm" onClick={manual}><Icon n="plus" />Tambahkan</button>
             <button type="button" className="btn sm soft" disabled={busy} onClick={() => fileRef.current?.click()}>
               <Icon n="camera" />{busy ? 'Membaca gambar…' : 'Scan struk'}
             </button>
@@ -154,14 +146,14 @@ export default function CostTypePicker({ onCost, onBuy }: Props) {
           <input ref={fileRef} type="file" hidden accept="image/*" onChange={e => onFile(e.target.files?.[0])} />
         </div>
       ) : (
-        <small>Ketik nama jenis biaya lalu tekan Enter untuk menambah, atau pilih dari daftar. Pilih dulu sebelum mengisi manual atau mengunggah struk.</small>
+        <small>Opsional: simpan nama biaya yang sering dipakai, lalu pilih untuk mengisi cepat atau scan struk.</small>
       )}
 
       {msg && <p className={msg.err ? 'bad' : 'ok'}>{msg.m}</p>}
 
       {oc.length > 0 && (
         <div>
-          <h3>Hasil bacaan untuk jenis: {sel === BUY ? 'Harga beli produk' : selType?.name}</h3>
+          <h3>Hasil bacaan untuk: {selType?.name}</h3>
           <small>Koreksi bila salah. Tidak ada yang masuk sebelum kamu menekan tombol di bawah.</small>
           {oc.map((x, i) => (
             <div className="card" style={{ padding: 12, margin: '8px 0', background: 'var(--fill-2)', boxShadow: 'none' }} key={i}>
