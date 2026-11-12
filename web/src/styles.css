@@ -743,3 +743,17 @@ input.mono { font-family: ui-monospace, 'SF Mono', Consolas, Menlo, monospace; l
 tr.grp th { background: var(--fill-2); color: var(--label); font-weight: 600; font-size: 13.5px; }
 tr.tot th { color: var(--label); font-weight: 700; border-top: 1px solid var(--sep); }
 .costrow select { padding-left: 10px; padding-right: 26px; background-position: right 8px center; font-size: 15px; }
+
+/* ---------- Diagram peringkat (Laporan & Dashboard) ---------- */
+.rank { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 14px; }
+.rk-head { display: flex; align-items: flex-start; gap: 10px; }
+.rk-no { flex: none; width: 24px; height: 24px; border-radius: 8px; background: var(--fill); color: var(--label-2); font-size: 12.5px; font-weight: 700; display: grid; place-items: center; margin-top: 1px; }
+.rank li.top .rk-no { background: var(--brand); color: #fff; }
+.rk-name { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.rk-val { flex: none; text-align: right; display: flex; flex-direction: column; line-height: 1.25; }
+.rk-val b { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+.rk-val small { font-size: 12px; }
+.rk-bar { height: 8px; border-radius: 4px; background: var(--fill-2); margin: 7px 0 0 34px; overflow: hidden; }
+.rk-bar i { display: block; height: 100%; border-radius: 4px; background: color-mix(in srgb, var(--brand-2) 45%, var(--sky)); opacity: .75; }
+.rank li.top .rk-bar i { background: linear-gradient(90deg, var(--brand-2), var(--sky)); opacity: 1; }
+.rk-bar i.n { background: var(--red); opacity: 1; }

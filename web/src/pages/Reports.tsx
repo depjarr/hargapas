@@ -10,7 +10,7 @@ export default function Reports() {
   const A = useMemo(() => d.products.filter(p => p.sell_price > 0).map(p => ({ p, a: at(calcWithGroup(p, d.products, d.groups), p.sell_price) })), [d.products, d.groups])
   const cats = useMemo(() => {
     const m: Record<string, number> = {}
-    A.forEach(x => { const k = x.p.category || 'Lainnya'; m[k] = (m[k] || 0) + x.a.total })
+    A.forEach(x => { const k = x.p.category || 'Tanpa kategori'; m[k] = (m[k] || 0) + x.a.total })
     return Object.entries(m)
   }, [A])
   const hist = useMemo(() => d.products.flatMap(p => p.price_history.map(h => ({ ...h, n: p.name }))).sort((x, y) => +new Date(y.created_at) - +new Date(x.created_at)), [d.products])
@@ -40,8 +40,8 @@ export default function Reports() {
         <button className="btn sm soft" onClick={csv} disabled={!d.products.length}><Icon n="download" />Unduh CSV</button>
       </div>
       <div className="grid g2">
-        <div className="card"><h2>Total untung per produk</h2><Bars rows={A.map(x => [x.p.name, x.a.total])} fmt={rp} /></div>
-        <div className="card"><h2>Untung per kategori</h2><Bars rows={cats} fmt={rp} /></div>
+        <div className="card"><h2>Total untung per produk</h2><small>Untung per produk × jumlah produk, diurutkan dari terbesar</small><Bars share rows={A.map(x => [x.p.name, x.a.total])} fmt={rp} /></div>
+        <div className="card"><h2>Untung per kategori</h2><small>Jumlah total untung semua produk di tiap kategori</small><Bars share rows={cats} fmt={rp} /></div>
       </div>
       <div className="card">
         <h2>Riwayat perhitungan</h2>
